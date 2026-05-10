@@ -1191,7 +1191,7 @@ function PanicModal({ onClose, dark, userBio = "" }) {
 
 
 // ─── DIARY PAGE ───────────────────────────────────────────────────────────────
-function DiaryPage({ dark, entries, setEntries, onAnalyze, loading, userBio = "" }) {
+function DiaryPage({ dark, entries, setEntries, loading, userBio = "" }) {
   const { user } = useAuth();
   const [chat, setChat] = useState(null);
   const [newModal, setNewModal] = useState(false);
@@ -1205,9 +1205,6 @@ function DiaryPage({ dark, entries, setEntries, onAnalyze, loading, userBio = ""
       await FirebaseService.saveEntry(user.uid, entry);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(null), 2000);
-      // Usa as entradas atuais + nova entrada para análise imediata
-      const updatedEntries = [entry, ...entries.filter(e => String(e.id) !== String(entry.id))];
-      setTimeout(() => onAnalyze(updatedEntries), 800);
     } catch {
       setSaveStatus("error");
     }
@@ -1381,7 +1378,7 @@ function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
 
       {!analyzing && list.length === 0 && (
         <div style={{ textAlign: "center", padding: "80px 24px", color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 15, lineHeight: 1.8, marginTop: 16 }}>
-          Nenhum padrão identificado ainda.<br />Adicione entradas no diário para que a IA possa analisá-las.
+          Nenhum padrão identificado ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       )}
 
@@ -1406,7 +1403,7 @@ function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
 }
 
 // ─── THOUGHT LINE PAGE ────────────────────────────────────────────────────────
-function ThoughtLinePage({ dark, nodes, edges, analyzing }) {
+function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh }) {
   const [hoveredNode, setHoveredNode] = useState(null);
   const displayNodes = nodes?.length ? nodes : [];
   const displayEdges = edges?.length ? edges : [];
@@ -1419,12 +1416,18 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing }) {
           <h2 style={{ fontFamily: "Georgia, serif", fontSize: 26, fontWeight: 400, color: dark ? "#e8e4df" : "#1a1714", margin: 0 }}>Linha de pensamento</h2>
           <p style={{ fontSize: 14, color: dark ? "#6b7280" : "#9ca3af", margin: "6px 0 0", fontFamily: "Georgia, serif", fontStyle: "italic" }}>Como seus pensamentos e emoções se conectam.</p>
         </div>
-        <AIBadge dark={dark} analyzing={analyzing} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4 }}>
+          <AIBadge dark={dark} analyzing={analyzing} />
+          <button onClick={onRefresh} disabled={analyzing} style={{
+            background: "none", border: "none", cursor: analyzing ? "not-allowed" : "pointer",
+            color: dark ? "#6b7280" : "#9ca3af", opacity: analyzing ? 0.4 : 1, padding: 4,
+          }} title="Reanalisar"><Icon name="refresh" size={16} /></button>
+        </div>
       </div>
 
       {!analyzing && displayNodes.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 24px", color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 15, lineHeight: 1.8, marginTop: 16 }}>
-          Nenhuma conexão identificada ainda.<br />Adicione entradas no diário para gerar sua linha de pensamento.
+          Nenhuma conexão identificada ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       ) : (
         <>
@@ -1469,7 +1472,7 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing }) {
 }
 
 // ─── FEELINGS PAGE ────────────────────────────────────────────────────────────
-function FeelingsPage({ dark, feelings, analyzing, summary }) {
+function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh }) {
   const [period, setPeriod] = useState("tudo");
   const displayFeelings = feelings?.length ? feelings : [];
   const max = displayFeelings.length ? Math.max(...displayFeelings.map((f) => f.freq)) : 1;
@@ -1484,7 +1487,13 @@ function FeelingsPage({ dark, feelings, analyzing, summary }) {
           <h2 style={{ fontFamily: "Georgia, serif", fontSize: 26, fontWeight: 400, color: dark ? "#e8e4df" : "#1a1714", margin: 0 }}>Nuvem de sentimentos</h2>
           <p style={{ fontSize: 14, color: dark ? "#6b7280" : "#9ca3af", margin: "6px 0 0", fontFamily: "Georgia, serif", fontStyle: "italic" }}>As emoções mais presentes nas suas entradas.</p>
         </div>
-        <AIBadge dark={dark} analyzing={analyzing} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4 }}>
+          <AIBadge dark={dark} analyzing={analyzing} />
+          <button onClick={onRefresh} disabled={analyzing} style={{
+            background: "none", border: "none", cursor: analyzing ? "not-allowed" : "pointer",
+            color: dark ? "#6b7280" : "#9ca3af", opacity: analyzing ? 0.4 : 1, padding: 4,
+          }} title="Reanalisar"><Icon name="refresh" size={16} /></button>
+        </div>
       </div>
 
       {summary && (
@@ -1495,7 +1504,7 @@ function FeelingsPage({ dark, feelings, analyzing, summary }) {
 
       {!analyzing && displayFeelings.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 24px", color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 15, lineHeight: 1.8, marginTop: 16 }}>
-          Nenhum sentimento identificado ainda.<br />Adicione entradas no diário para gerar sua nuvem de sentimentos.
+          Nenhum sentimento identificado ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       ) : (
         <>
@@ -1886,9 +1895,12 @@ function AppInner() {
     return unsub;
   }, [user]);
 
+  const analyzingRef = useRef(false);
+
   const runAnalysis = useCallback(async (entriesToAnalyze, bio = "") => {
-    const effectiveBio = bio || userBio;
-    if ((!entriesToAnalyze?.length && !effectiveBio) || analyzing) return;
+    const effectiveBio = bio !== undefined ? bio : userBio;
+    if ((!entriesToAnalyze?.length && !effectiveBio) || analyzingRef.current) return;
+    analyzingRef.current = true;
     setAnalyzing(true);
     try {
       // Busca todas as conversas para enriquecer a análise
@@ -1908,8 +1920,9 @@ function AppInner() {
     } catch (err) {
       console.error("Analysis error:", err);
     }
+    analyzingRef.current = false;
     setAnalyzing(false);
-  }, [user, userBio, analyzing]);
+  }, [user, userBio]);
 
   // Carrega bio do usuário ao logar
   useEffect(() => {
@@ -1921,14 +1934,11 @@ function AppInner() {
     }).catch(() => setBioLoading(false));
   }, [user]);
 
-  // Quando entradas E bio carregam: carrega análise salva E dispara nova análise
+  // Quando entradas E bio carregam: carrega análise salva (sem chamar a API automaticamente)
   useEffect(() => {
     if (entriesLoading || bioLoading || !user) return;
     if (entries.length > 0 || userBio) {
-      // Carrega análise salva imediatamente para mostrar algo
       loadSavedAnalysis(user.uid);
-      // Dispara nova análise completa em background (inclui conversas + bio já carregada)
-      runAnalysis(entries, userBio);
     } else {
       setAiPatterns(null);
       setAiFeelings(null);
@@ -1945,15 +1955,17 @@ function AppInner() {
   const sidebarBg = dark ? "#080c14" : "#f7f5f2";
   const borderColor = dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)";
 
+  const handleRefresh = () => runAnalysis(entries, userBio);
+
   const renderPage = () => {
     switch (page) {
       case "home": return <HomePage dark={dark} setPage={setPage} />;
-      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} onAnalyze={runAnalysis} loading={entriesLoading} userBio={userBio} />;
-      case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={() => runAnalysis(entries)} />;
-      case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} />;
-      case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} />;
+      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} loading={entriesLoading} userBio={userBio} />;
+      case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={handleRefresh} />;
+      case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} onRefresh={handleRefresh} />;
+      case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} onRefresh={handleRefresh} />;
       case "todos": return <TodoPage dark={dark} />;
-      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={(bio) => { setUserBio(bio); if (entries.length > 0) runAnalysis(entries, bio); }} />;
+      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={setUserBio} />;
       default: return <HomePage dark={dark} setPage={setPage} />;
     }
   };
