@@ -214,7 +214,13 @@ async function callGemini(prompt, systemContext = "") {
 }
 
 async function callGeminiChat(systemPrompt, history, userMessage) {
-  // Gemini requires alternating user/model turns — filter out consecutive same-role messages
+  // Embed system prompt into the first user message for maximum API compatibility
+  const systemPrefix = `[INSTRUÇÕES DO SISTEMA - siga sempre]
+${systemPrompt}
+
+[MENSAGEM DO USUÁRIO]
+`;
+
   const rawContents = [
     ...history.map((m) => ({
       role: m.role === "ai" ? "model" : "user",
@@ -233,18 +239,19 @@ async function callGeminiChat(systemPrompt, history, userMessage) {
     return acc;
   }, []);
 
-  // Must start with user turn
-  if (contents[0]?.role !== "user") {
-    contents.unshift({ role: "user", parts: [{ text: "." }] });
+  // Prepend system prompt to first user message
+  if (contents[0]?.role === "user") {
+    contents[0].parts[0].text = systemPrefix + contents[0].parts[0].text;
+  } else {
+    contents.unshift({ role: "user", parts: [{ text: systemPrefix + "." }] });
   }
 
   const res = await fetch(GEMINI_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
-      generationConfig: { temperature: 0.85, maxOutputTokens: 300, topP: 0.92 },
+      generationConfig: { temperature: 0.85, maxOutputTokens: 512, topP: 0.92 },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -710,12 +717,12 @@ Responda com base nesse contexto emocional. Conecte o que o usuário diz agora c
 
     try {
       const text = await callGeminiChat(systemPrompt, msgs, userMsg);
-      const finalMsgs = [...newMsgs, { role: "ai", text: text || FALLBACK_RESPONSES[Math.floor(Math.random() * FALLBACK_RESPONSES.length)] }];
+      const finalMsgs = [...newMsgs, { role: "ai", text: text || "Não consegui gerar uma resposta. Tente novamente." }];
       setMsgs(finalMsgs);
       saveConversation(finalMsgs);
     } catch (err) {
       console.error("Gemini chat failed:", err);
-      const fallMsgs = [...newMsgs, { role: "ai", text: FALLBACK_RESPONSES[Math.floor(Math.random() * FALLBACK_RESPONSES.length)] }];
+      const fallMsgs = [...newMsgs, { role: "ai", text: "Desculpe, não consegui me conectar agora. Verifique sua conexão e tente novamente." }];
       setMsgs(fallMsgs);
       saveConversation(fallMsgs);
     }
@@ -1659,7 +1666,7 @@ function AppInner() {
       console.error("Analysis error:", err);
     }
     setAnalyzing(false);
-  }, [analyzing, user]);
+  }, [user]);
 
   // Quando entradas carregam: se houver entradas, carrega análise salva do Firebase.
   // Se não houver entradas, garante que as abas ficam limpas.
