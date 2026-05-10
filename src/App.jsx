@@ -92,6 +92,22 @@ const FirebaseService = {
     const snap = await getDoc(doc(db, "users", uid, "conversations", String(entryId)));
     return snap.exists() ? snap.data() : null;
   },
+  async getAllConversations(uid) {
+    const { getDocs, collection } = await import("firebase/firestore");
+    const snaps = await getDocs(collection(db, "users", uid, "conversations"));
+    const msgs = [];
+    snaps.forEach((d) => { const data = d.data(); if (data.messages) msgs.push(...data.messages); });
+    return msgs;
+  },
+  async getPanicConversation(uid) {
+    const snap = await getDoc(doc(db, "users", uid, "panic", "conversation"));
+    return snap.exists() ? snap.data().messages : [];
+  },
+  async savePanicConversation(uid, messages) {
+    await setDoc(doc(db, "users", uid, "panic", "conversation"), {
+      messages, updatedAt: serverTimestamp(),
+    });
+  },
 
   // ── Análise (padrões, sentimentos, conexões) ─────────────────────────────────
   async saveAnalysis(uid, analysis) {
@@ -173,11 +189,15 @@ COMO AGIR:
 
 TOM: próximo, real, como uma conversa entre amigas de confiança.`;
 
-const ANALYSIS_PROMPT = (entries) =>
-  `Você é um analisador emocional. Analise as entradas do diário abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional, sem explicações.
+const ANALYSIS_PROMPT = (entries, conversations = [], bio = "") =>
+  `Você é um analisador emocional profundo. Analise TODO o contexto abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional.
 
-ENTRADAS DO DIÁRIO:
-${entries.map((e, i) => `[${e.date}]: "${e.text}" | Emoções declaradas: ${e.emotions?.join(", ")}`).join("\n")}
+${bio ? `HISTÓRIA DE VIDA DO USUÁRIO:\n${bio}\n` : ""}
+ENTRADAS DO DIÁRIO (${entries.length} registros):
+${entries.map((e) => `[${e.date}]: "${e.text}" | Emoções declaradas: ${e.emotions?.join(", ") || "nenhuma"}`).join("\n")}
+
+${conversations.length > 0 ? `CONVERSAS COM O CHATBOT (${conversations.length} mensagens):
+${conversations.filter(m => m.role === "user").slice(-30).map(m => `- "${m.text}"`).join("\n")}` : ""}
 
 Retorne exatamente este JSON (sem nenhum texto antes ou depois):
 {
@@ -197,13 +217,14 @@ Retorne exatamente este JSON (sem nenhum texto antes ou depois):
 }
 
 REGRAS OBRIGATÓRIAS:
-- patterns: 3 a 6 padrões emocionais/comportamentais reais percebidos nas entradas
-- feelings: 6 a 14 emoções REAIS detectadas no texto (ex: "tristeza", "ansiedade", "gratidão", "saudade") com frequência estimada
-- nodes: 5 a 9 nós representando emoções ou temas centrais presentes no diário
-- edges: conexões causais ou relacionais entre os nós
-- Base tudo APENAS no que está escrito nas entradas — nunca invente emoções não presentes
+- patterns: 3 a 6 padrões emocionais/comportamentais REAIS percebidos em TODO o contexto
+- feelings: 6 a 14 emoções REAIS detectadas (ex: "tristeza", "ansiedade", "gratidão") com frequência estimada 1-15
+- nodes: 5 a 9 nós representando emoções ou temas centrais presentes
+- edges: conexões causais entre os nós — mínimo 3 conexões
+- Base TUDO no que foi escrito — nunca invente emoções ausentes
 - Linguagem observacional, nunca diagnóstica
 - O JSON deve ser 100% válido e parseável`;
+
 
 async function callGemini(prompt, systemContext = "") {
   const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
@@ -282,9 +303,9 @@ ${systemPrompt}
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
-async function analyzeEntries(entries) {
+async function analyzeEntries(entries, conversations = [], bio = "") {
   if (!entries.length) return null;
-  const raw = await callGemini(ANALYSIS_PROMPT(entries));
+  const raw = await callGemini(ANALYSIS_PROMPT(entries, conversations, bio));
   const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   return JSON.parse(clean);
 }
@@ -1024,6 +1045,140 @@ function HomePage({ dark, setPage }) {
   );
 }
 
+// ─── PANIC BUTTON & CHAT ──────────────────────────────────────────────────────
+const PANIC_PERSONA = `Você é uma presença calma, acolhedora e humana — como uma amiga de muita confiança que está presente em um momento difícil.
+A pessoa que está falando com você pode estar em sofrimento, angústia, ansiedade, ou simplesmente precisando desabafar.
+
+COMO AGIR:
+- Antes de qualquer coisa: acolha. Reconheça o que a pessoa está sentindo sem minimizar.
+- Fale com muita calma e gentileza. Sem pressa. Sem julgamento.
+- Você pode ouvir, validar, oferecer perspectiva gentil, e ocasionalmente fazer UMA pergunta que ajude a pessoa a se sentir mais compreendida.
+- Não dê soluções prontas nem liste passos. Esteja presente.
+- Se a pessoa demonstrar risco real a si mesma, acolha com cuidado e sugira gentilmente buscar apoio profissional ou ligar para o CVV (188).
+- Máximo 3-4 frases por resposta. Seja humana e presente.
+- Fale sempre em português.
+
+TOM: calmo, gentil, como um abraço em forma de palavras.`;
+
+function PanicModal({ onClose, dark, userBio = "" }) {
+  const { user } = useAuth();
+  const [msgs, setMsgs] = useState([
+    { role: "ai", text: "Estou aqui. Pode falar — o que está acontecendo?" }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    if (!user) return;
+    FirebaseService.getPanicConversation(user.uid).then((saved) => {
+      if (saved?.length) setMsgs(saved);
+    });
+  }, [user]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  const save = async (messages) => {
+    if (!user) return;
+    try { await FirebaseService.savePanicConversation(user.uid, messages); } catch {}
+  };
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = input.trim();
+    setInput("");
+    const newMsgs = [...msgs, { role: "user", text: userMsg }];
+    setMsgs(newMsgs);
+    setLoading(true);
+
+    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA (use para entender melhor):\n${userBio}` : "";
+    const systemPrompt = `${PANIC_PERSONA}${bioContext}`;
+
+    try {
+      const text = await callGeminiChat(systemPrompt, msgs, userMsg);
+      const finalMsgs = [...newMsgs, { role: "ai", text: text || "Estou aqui com você. Continue, pode falar." }];
+      setMsgs(finalMsgs);
+      save(finalMsgs);
+    } catch {
+      const fallMsgs = [...newMsgs, { role: "ai", text: "Não consegui me conectar agora, mas estou aqui. Tente novamente em um momento." }];
+      setMsgs(fallMsgs);
+      save(fallMsgs);
+    }
+    setLoading(false);
+  };
+
+  const red = "#ef4444";
+  const cardBg = dark ? "rgba(15,10,10,0.97)" : "rgba(255,252,252,0.97)";
+  const borderCol = dark ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.12)";
+  const textCol = dark ? "#e8e4df" : "#1a1714";
+  const subCol = dark ? "#9ca3af" : "#6b7280";
+  const inputBg = dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, animation: "fadeIn 0.2s ease" }}>
+      <div style={{ width: "100%", maxWidth: 520, height: "80vh", maxHeight: 640, background: cardBg, borderRadius: 24, border: `1px solid ${borderCol}`, display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,0.4)", overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${borderCol}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: red, boxShadow: `0 0 8px ${red}` }} />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: textCol }}>Estou aqui</div>
+              <div style={{ fontSize: 11, color: subCol, marginTop: 1 }}>Fale o que estiver sentindo</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: subCol, padding: 4, borderRadius: 8, transition: "color 0.2s" }}>
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {msgs.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "slideUp 0.3s ease" }}>
+              <div style={{
+                maxWidth: "80%", padding: "12px 16px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                background: m.role === "user" ? "linear-gradient(135deg, #ef4444, #dc2626)" : (dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"),
+                color: m.role === "user" ? "#fff" : textCol, fontSize: 14, lineHeight: 1.65,
+              }}>
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: "flex", gap: 6, padding: "8px 0" }}>
+              {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: red, opacity: 0.5, animation: `pulse 1.2s ease ${i*0.2}s infinite` }} />)}
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+
+        {/* CVV notice */}
+        <div style={{ padding: "8px 24px", background: dark ? "rgba(239,68,68,0.05)" : "rgba(239,68,68,0.04)", borderTop: `1px solid ${borderCol}`, flexShrink: 0 }}>
+          <p style={{ margin: 0, fontSize: 11, color: subCol, textAlign: "center" }}>
+            Em crise grave, ligue para o <strong style={{ color: red }}>CVV: 188</strong> — disponível 24h
+          </p>
+        </div>
+
+        {/* Input */}
+        <div style={{ padding: "16px 24px", borderTop: `1px solid ${borderCol}`, display: "flex", gap: 12, alignItems: "flex-end", flexShrink: 0 }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Escreva o que está sentindo..."
+            rows={2}
+            style={{ flex: 1, background: inputBg, border: `1px solid ${borderCol}`, borderRadius: 14, padding: "12px 16px", fontSize: 14, color: textCol, fontFamily: "'Lato', sans-serif", resize: "none", outline: "none", lineHeight: 1.5 }}
+          />
+          <button onClick={send} disabled={loading || !input.trim()} style={{ width: 44, height: 44, borderRadius: "50%", background: input.trim() ? red : (dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"), border: "none", cursor: input.trim() ? "pointer" : "default", color: input.trim() ? "#fff" : subCol, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
+            <Icon name="send" size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── DIARY PAGE ───────────────────────────────────────────────────────────────
 function DiaryPage({ dark, entries, setEntries, onAnalyze, loading, userBio = "" }) {
   const { user } = useAuth();
@@ -1683,6 +1838,7 @@ function AppInner() {
   const [aiSummary, setAiSummary] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [userBio, setUserBio] = useState("");
+  const [panicOpen, setPanicOpen] = useState(false);
 
   const toggle = () => setDark((p) => !p);
 
@@ -1718,27 +1874,29 @@ function AppInner() {
     return unsub;
   }, [user]);
 
-  const runAnalysis = useCallback(async (entriesToAnalyze) => {
+  const runAnalysis = useCallback(async (entriesToAnalyze, bio = "") => {
     if (!entriesToAnalyze?.length || analyzing) return;
     setAnalyzing(true);
     try {
-      const result = await analyzeEntries(entriesToAnalyze);
+      // Busca todas as conversas para enriquecer a análise
+      let conversations = [];
+      if (user) {
+        try { conversations = await FirebaseService.getAllConversations(user.uid); } catch {}
+      }
+      const result = await analyzeEntries(entriesToAnalyze, conversations, bio || userBio);
       if (result) {
         if (result.patterns?.length) setAiPatterns(result.patterns);
         if (result.feelings?.length) setAiFeelings(result.feelings);
         if (result.nodes?.length) setAiNodes(result.nodes);
         if (result.edges?.length) setAiEdges(result.edges);
         if (result.summary) setAiSummary(result.summary);
-        // Salva análise no Firebase
-        if (user) {
-          await FirebaseService.saveAnalysis(user.uid, result).catch(console.error);
-        }
+        if (user) await FirebaseService.saveAnalysis(user.uid, result).catch(console.error);
       }
     } catch (err) {
       console.error("Analysis error:", err);
     }
     setAnalyzing(false);
-  }, [user]);
+  }, [user, userBio, analyzing]);
 
   // Carrega bio do usuário ao logar
   useEffect(() => {
@@ -1746,12 +1904,14 @@ function AppInner() {
     FirebaseService.getBio(user.uid).then((bio) => setUserBio(bio || ""));
   }, [user]);
 
-  // Quando entradas carregam: se houver entradas, carrega análise salva do Firebase.
-  // Se não houver entradas, garante que as abas ficam limpas.
+  // Quando entradas carregam: carrega análise salva E dispara nova análise se necessário
   useEffect(() => {
     if (entriesLoading || !user) return;
     if (entries.length > 0) {
+      // Carrega análise salva imediatamente para mostrar algo
       loadSavedAnalysis(user.uid);
+      // Dispara nova análise completa em background (inclui conversas + bio)
+      runAnalysis(entries);
     } else {
       setAiPatterns(null);
       setAiFeelings(null);
@@ -1880,10 +2040,36 @@ function AppInner() {
         {renderPage()}
       </main>
 
+      {/* Botão do Pânico */}
+      <button
+        onClick={() => setPanicOpen(true)}
+        title="Botão do Pânico — clique se não estiver bem"
+        style={{
+          position: "fixed", bottom: 90, right: 24, zIndex: 500,
+          width: 52, height: 52, borderRadius: "50%",
+          background: "linear-gradient(135deg, #ef4444, #dc2626)",
+          border: "none", cursor: "pointer", color: "#fff",
+          boxShadow: "0 4px 20px rgba(239,68,68,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 22, transition: "transform 0.2s, box-shadow 0.2s",
+          animation: "pulseRed 2.5s ease infinite",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; e.currentTarget.style.boxShadow = "0 8px 32px rgba(239,68,68,0.6)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(239,68,68,0.5)"; }}
+      >
+        🆘
+      </button>
+
+      {panicOpen && <PanicModal onClose={() => setPanicOpen(false)} dark={dark} userBio={userBio} />}
+
       <style>{`
         @media (max-width: 700px) {
           .sidebar-desktop { display: none !important; }
           .mobile-nav { display: flex !important; }
+        }
+        @keyframes pulseRed {
+          0%, 100% { box-shadow: 0 4px 20px rgba(239,68,68,0.5); }
+          50% { box-shadow: 0 4px 28px rgba(239,68,68,0.8); }
         }
       `}</style>
     </div>
