@@ -193,8 +193,8 @@ const ANALYSIS_PROMPT = (entries, conversations = [], bio = "") =>
   `Você é um analisador emocional profundo. Analise TODO o contexto abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional.
 
 ${bio ? `HISTÓRIA DE VIDA DO USUÁRIO:\n${bio}\n` : ""}
-ENTRADAS DO DIÁRIO (${entries.length} registros):
-${entries.map((e) => `[${e.date}]: "${e.text}" | Emoções declaradas: ${e.emotions?.join(", ") || "nenhuma"}`).join("\n")}
+${entries.length > 0 ? `ENTRADAS DO DIÁRIO (${entries.length} registros):
+${entries.map((e) => `[${e.date}]: "${e.text}" | Emoções declaradas: ${e.emotions?.join(", ") || "nenhuma"}`).join("\n")}` : ""}
 
 ${conversations.length > 0 ? `CONVERSAS COM O CHATBOT (${conversations.length} mensagens):
 ${conversations.filter(m => m.role === "user").slice(-30).map(m => `- "${m.text}"`).join("\n")}` : ""}
@@ -255,8 +255,16 @@ ${systemPrompt}
 [MENSAGEM DO USUÁRIO]
 `;
 
+  // Filter out messages that would make the conversation start with "model"
+  // The Gemini API requires conversations to begin with a "user" message.
+  // Drop leading AI messages (they are display-only greetings).
+  const filteredHistory = [...history];
+  while (filteredHistory.length > 0 && filteredHistory[0].role === "ai") {
+    filteredHistory.shift();
+  }
+
   const rawContents = [
-    ...history.map((m) => ({
+    ...filteredHistory.map((m) => ({
       role: m.role === "ai" ? "model" : "user",
       parts: [{ text: m.text }],
     })),
@@ -304,7 +312,7 @@ ${systemPrompt}
 }
 
 async function analyzeEntries(entries, conversations = [], bio = "") {
-  if (!entries.length) return null;
+  if (!entries.length && !bio) return null;
   const raw = await callGemini(ANALYSIS_PROMPT(entries, conversations, bio));
   const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   return JSON.parse(clean);
@@ -580,8 +588,11 @@ function AuthPage({ dark }) {
         animation: "slideUp 0.4s ease",
       }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ fontFamily: "Georgia, serif", fontSize: 13, color: dark ? "#818cf8" : "#7c3aed", fontStyle: "italic", marginBottom: 6 }}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 13, color: dark ? "#818cf8" : "#7c3aed", fontStyle: "italic", marginBottom: 2 }}>
             Diário do
+          </div>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 15, color: dark ? "#818cf8" : "#7c3aed", fontStyle: "italic", marginBottom: 8 }}>
+            Autoconhecimento
           </div>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: dark ? "#e8e4df" : "#1a1714", marginBottom: 8 }}>
             {mode === "login" ? "Bem-vindo de volta" : mode === "signup" ? "Criar conta" : "Recuperar senha"}
@@ -1838,6 +1849,7 @@ function AppInner() {
   const [aiSummary, setAiSummary] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [userBio, setUserBio] = useState("");
+  const [bioLoading, setBioLoading] = useState(true);
   const [panicOpen, setPanicOpen] = useState(false);
 
   const toggle = () => setDark((p) => !p);
@@ -1875,7 +1887,8 @@ function AppInner() {
   }, [user]);
 
   const runAnalysis = useCallback(async (entriesToAnalyze, bio = "") => {
-    if (!entriesToAnalyze?.length || analyzing) return;
+    const effectiveBio = bio || userBio;
+    if ((!entriesToAnalyze?.length && !effectiveBio) || analyzing) return;
     setAnalyzing(true);
     try {
       // Busca todas as conversas para enriquecer a análise
@@ -1883,7 +1896,7 @@ function AppInner() {
       if (user) {
         try { conversations = await FirebaseService.getAllConversations(user.uid); } catch {}
       }
-      const result = await analyzeEntries(entriesToAnalyze, conversations, bio || userBio);
+      const result = await analyzeEntries(entriesToAnalyze || [], conversations, effectiveBio);
       if (result) {
         if (result.patterns?.length) setAiPatterns(result.patterns);
         if (result.feelings?.length) setAiFeelings(result.feelings);
@@ -1901,17 +1914,21 @@ function AppInner() {
   // Carrega bio do usuário ao logar
   useEffect(() => {
     if (!user) return;
-    FirebaseService.getBio(user.uid).then((bio) => setUserBio(bio || ""));
+    setBioLoading(true);
+    FirebaseService.getBio(user.uid).then((bio) => {
+      setUserBio(bio || "");
+      setBioLoading(false);
+    }).catch(() => setBioLoading(false));
   }, [user]);
 
-  // Quando entradas carregam: carrega análise salva E dispara nova análise se necessário
+  // Quando entradas E bio carregam: carrega análise salva E dispara nova análise
   useEffect(() => {
-    if (entriesLoading || !user) return;
-    if (entries.length > 0) {
+    if (entriesLoading || bioLoading || !user) return;
+    if (entries.length > 0 || userBio) {
       // Carrega análise salva imediatamente para mostrar algo
       loadSavedAnalysis(user.uid);
-      // Dispara nova análise completa em background (inclui conversas + bio)
-      runAnalysis(entries);
+      // Dispara nova análise completa em background (inclui conversas + bio já carregada)
+      runAnalysis(entries, userBio);
     } else {
       setAiPatterns(null);
       setAiFeelings(null);
@@ -1919,7 +1936,8 @@ function AppInner() {
       setAiEdges(null);
       setAiSummary(null);
     }
-  }, [entriesLoading, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entriesLoading, bioLoading, user]);
 
   const bg = dark
     ? "linear-gradient(160deg, #080c14 0%, #0a0f1a 50%, #0c0d18 100%)"
@@ -1935,7 +1953,7 @@ function AppInner() {
       case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} />;
       case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} />;
       case "todos": return <TodoPage dark={dark} />;
-      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={setUserBio} />;
+      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={(bio) => { setUserBio(bio); if (entries.length > 0) runAnalysis(entries, bio); }} />;
       default: return <HomePage dark={dark} setPage={setPage} />;
     }
   };
