@@ -137,6 +137,18 @@ const FirebaseService = {
       { merge: true }
     );
   },
+
+  // ── Bio "Quem sou eu" ─────────────────────────────────────────────────────────
+  async saveBio(uid, bio) {
+    await setDoc(doc(db, "users", uid, "settings", "bio"), {
+      text: bio,
+      updatedAt: serverTimestamp(),
+    });
+  },
+  async getBio(uid) {
+    const snap = await getDoc(doc(db, "users", uid, "settings", "bio"));
+    return snap.exists() ? snap.data().text : "";
+  },
 };
 
 // ─── GEMINI SERVICE ───────────────────────────────────────────────────────────
@@ -144,53 +156,54 @@ const FirebaseService = {
 // Todas as chamadas passam pelo proxy em /api/gemini.
 const GEMINI_URL = "/api/gemini";
 
-const SYSTEM_PERSONA = `Você é um espelho reflexivo — silencioso, profundo, acolhedor.
-Não é terapeuta, coach, conselheiro nem assistente produtivo.
-Seu papel é fazer perguntas que ajudam o usuário a se ver com mais clareza.
+const SYSTEM_PERSONA = `Você é uma amiga próxima e madura — alguém que ouve de verdade, que se importa genuinamente, e que fala com calma e carinho.
+Não é terapeuta nem conselheira. É uma presença humana e acolhedora.
 
-REGRAS ABSOLUTAS:
-- Nunca diagnostique. Nunca use "você tem ansiedade" ou similares.
-- Nunca dê ordens, conselhos ou sugestões de produtividade.
-- Nunca use frases motivacionais genéricas.
-- Não demonstre entusiasmo artificial.
-- Não diga "ótimo!", "excelente!", "que legal!".
-- Não finalize com perguntas duplas — apenas uma por vez.
-- Respostas curtas: máximo 2 frases.
-- Fale sempre em português, com calma e naturalidade humana.
-- Se o usuário demonstrar sofrimento intenso, reconheça com cuidado e sugira gentilmente buscar apoio profissional — sem alarmismo.
-- Você não substitui profissionais de saúde mental.
+COMO AGIR:
+- Alterne naturalmente entre ouvir, validar, compartilhar uma observação genuína e, quando fizer sentido, fazer UMA pergunta reflexiva.
+- Não faça pergunta toda vez — às vezes só reconheça o que a pessoa sente, com palavras simples e verdadeiras.
+- Quando a pessoa desabafar, primeiro acolha o sentimento antes de qualquer coisa.
+- Deixe a pessoa chegar às próprias conclusões — não diga o que ela deve fazer, mas ajude-a a enxergar por conta própria.
+- Fale como gente, não como IA. Sem listas, sem tópicos, sem formalidades.
+- Máximo 3 frases por resposta. Seja direta e humana.
+- Nunca diagnostique. Nunca diga "você tem ansiedade" ou similares.
+- Nada de frases motivacionais genéricas ou entusiasmo artificial.
+- Se o usuário demonstrar sofrimento intenso, acolha com cuidado e sugira gentilmente buscar apoio profissional.
+- Fale sempre em português.
 
-TOM: reflexivo, quieto, como alguém que ouve de verdade antes de falar.`;
+TOM: próximo, real, como uma conversa entre amigas de confiança.`;
 
 const ANALYSIS_PROMPT = (entries) =>
-  `Você é um analisador emocional silencioso. Analise as entradas do diário abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional.
+  `Você é um analisador emocional. Analise as entradas do diário abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional, sem explicações.
 
 ENTRADAS DO DIÁRIO:
 ${entries.map((e, i) => `[${e.date}]: "${e.text}" | Emoções declaradas: ${e.emotions?.join(", ")}`).join("\n")}
 
-Retorne exatamente este JSON:
+Retorne exatamente este JSON (sem nenhum texto antes ou depois):
 {
   "patterns": [
-    { "label": "string", "intensity": number_0_to_100, "desc": "string reflexiva de 1 frase" }
+    { "label": "string curto", "intensity": number_0_to_100, "desc": "1 frase reflexiva e observacional" }
   ],
   "feelings": [
-    { "word": "string", "freq": number }
+    { "word": "emoção em português", "freq": number_1_to_15 }
   ],
   "nodes": [
-    { "id": "string", "label": "string", "x": number_0_to_100, "y": number_0_to_100 }
+    { "id": "string_sem_espacos", "label": "string curto", "x": number_0_to_100, "y": number_0_to_100 }
   ],
   "edges": [
     ["id_origem", "id_destino"]
   ],
-  "summary": "string com 1-2 frases reflexivas sobre o estado emocional geral"
+  "summary": "1-2 frases reflexivas sobre o estado emocional geral"
 }
 
-REGRAS:
-- patterns: 3 a 6 padrões emocionais/comportamentais percebidos
-- feelings: 6 a 14 emoções detectadas com frequência estimada (1-15)
-- nodes: 5 a 9 nós representando emoções/comportamentos conectados
-- edges: conexões causais entre nós
-- Nunca diagnostique — use linguagem observacional e reflexiva`;
+REGRAS OBRIGATÓRIAS:
+- patterns: 3 a 6 padrões emocionais/comportamentais reais percebidos nas entradas
+- feelings: 6 a 14 emoções REAIS detectadas no texto (ex: "tristeza", "ansiedade", "gratidão", "saudade") com frequência estimada
+- nodes: 5 a 9 nós representando emoções ou temas centrais presentes no diário
+- edges: conexões causais ou relacionais entre os nós
+- Base tudo APENAS no que está escrito nas entradas — nunca invente emoções não presentes
+- Linguagem observacional, nunca diagnóstica
+- O JSON deve ser 100% válido e parseável`;
 
 async function callGemini(prompt, systemContext = "") {
   const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
@@ -660,7 +673,7 @@ function AuthPage({ dark }) {
 }
 
 // ─── CHAT MODAL (com save no Firebase) ────────────────────────────────────────
-function ChatModal({ entry, onClose, dark }) {
+function ChatModal({ entry, onClose, dark, userBio = "" }) {
   const { user } = useAuth();
   const [msgs, setMsgs] = useState([
     { role: "ai", text: `Li o que você escreveu sobre ${formatDate(entry.date)}. O que mais ficou presente para você nesse dia?` }
@@ -706,14 +719,16 @@ function ChatModal({ entry, onClose, dark }) {
     setMsgs(newMsgs);
     setLoading(true);
 
-    const systemPrompt = `${SYSTEM_PERSONA}
+    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA (use para entender melhor, não mencione explicitamente):\n${userBio}` : "";
+
+    const systemPrompt = `${SYSTEM_PERSONA}${bioContext}
 
 CONTEXTO DA ENTRADA DO DIÁRIO:
 Data: ${entry.date}
 Texto: "${entry.text}"
 Emoções detectadas: ${entry.emotions?.join(", ")}
 
-Responda com base nesse contexto emocional. Conecte o que o usuário diz agora com o que ele escreveu.`;
+Use esse contexto para entender o momento emocional da pessoa. Responda como uma amiga que conhece esse contexto, mas de forma natural — não repita o que ela escreveu, apenas deixe isso guiar sua empatia.`;
 
     try {
       const text = await callGeminiChat(systemPrompt, msgs, userMsg);
@@ -1010,7 +1025,7 @@ function HomePage({ dark, setPage }) {
 }
 
 // ─── DIARY PAGE ───────────────────────────────────────────────────────────────
-function DiaryPage({ dark, entries, setEntries, onAnalyze, loading }) {
+function DiaryPage({ dark, entries, setEntries, onAnalyze, loading, userBio = "" }) {
   const { user } = useAuth();
   const [chat, setChat] = useState(null);
   const [newModal, setNewModal] = useState(false);
@@ -1095,7 +1110,7 @@ function DiaryPage({ dark, entries, setEntries, onAnalyze, loading }) {
             {deletingId === selected.id ? "Excluindo..." : "Excluir"}
           </button>
         </div>
-        {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} />}
+        {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} />}
       </div>
     );
   }
@@ -1166,7 +1181,7 @@ function DiaryPage({ dark, entries, setEntries, onAnalyze, loading }) {
       </div>
 
       {newModal && <NewEntryModal onClose={() => setNewModal(false)} onSave={saveEntry} dark={dark} />}
-      {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} />}
+      {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} />}
     </div>
   );
 }
@@ -1479,9 +1494,24 @@ function TodoPage({ dark }) {
 }
 
 // ─── SETTINGS PAGE (com Firebase) ─────────────────────────────────────────────
-function SettingsPage({ dark, toggleDark }) {
+function SettingsPage({ dark, toggleDark, userBio, setUserBio }) {
   const { user, logout } = useAuth();
   const [saveStatus, setSaveStatus] = useState(null);
+  const [bioText, setBioText] = useState(userBio || "");
+  const [bioStatus, setBioStatus] = useState(null);
+
+  const saveBio = async () => {
+    if (!user) return;
+    setBioStatus("saving");
+    try {
+      await FirebaseService.saveBio(user.uid, bioText);
+      setUserBio(bioText);
+      setBioStatus("saved");
+      setTimeout(() => setBioStatus(null), 2000);
+    } catch {
+      setBioStatus("error");
+    }
+  };
 
   const handleToggleDark = async () => {
     toggleDark();
@@ -1564,6 +1594,47 @@ function SettingsPage({ dark, toggleDark }) {
         </div>
       </div>
 
+      {/* Quem sou eu */}
+      <div style={{ marginBottom: 36 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: dark ? "#4b5563" : "#9ca3af" }}>Quem sou eu</div>
+          <SaveIndicator status={bioStatus} dark={dark} />
+        </div>
+        <div style={{ background: dark ? "rgba(255,255,255,0.02)" : "#fff", borderRadius: 16, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, padding: "20px 22px" }}>
+          <p style={{ fontSize: 12, color: dark ? "#6b7280" : "#9ca3af", marginBottom: 14, marginTop: 0, lineHeight: 1.6 }}>
+            Conte sua história, quem você é, o que já viveu, seus valores e o que importa para você. A IA usará isso para te entender melhor nas conversas.
+          </p>
+          <textarea
+            value={bioText}
+            onChange={(e) => setBioText(e.target.value)}
+            placeholder="Escreva livremente sobre quem você é..."
+            rows={8}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)",
+              border: `1px solid ${dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
+              borderRadius: 12, padding: "14px 16px",
+              fontSize: 14, lineHeight: 1.7,
+              color: dark ? "#d1cdc8" : "#1a1714",
+              fontFamily: "'Lato', sans-serif",
+              resize: "vertical", outline: "none",
+            }}
+          />
+          <button
+            onClick={saveBio}
+            style={{
+              marginTop: 12, padding: "10px 24px",
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "#fff", border: "none", borderRadius: 10,
+              fontSize: 13, cursor: "pointer", fontFamily: "'Lato', sans-serif",
+              opacity: bioStatus === "saving" ? 0.7 : 1,
+            }}
+          >
+            {bioStatus === "saving" ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
+
       {/* Conta */}
       <div>
         <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: dark ? "#4b5563" : "#9ca3af", marginBottom: 12 }}>Conta</div>
@@ -1611,6 +1682,7 @@ function AppInner() {
   const [aiEdges, setAiEdges] = useState(null);
   const [aiSummary, setAiSummary] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [userBio, setUserBio] = useState("");
 
   const toggle = () => setDark((p) => !p);
 
@@ -1668,6 +1740,12 @@ function AppInner() {
     setAnalyzing(false);
   }, [user]);
 
+  // Carrega bio do usuário ao logar
+  useEffect(() => {
+    if (!user) return;
+    FirebaseService.getBio(user.uid).then((bio) => setUserBio(bio || ""));
+  }, [user]);
+
   // Quando entradas carregam: se houver entradas, carrega análise salva do Firebase.
   // Se não houver entradas, garante que as abas ficam limpas.
   useEffect(() => {
@@ -1692,12 +1770,12 @@ function AppInner() {
   const renderPage = () => {
     switch (page) {
       case "home": return <HomePage dark={dark} setPage={setPage} />;
-      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} onAnalyze={runAnalysis} loading={entriesLoading} />;
+      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} onAnalyze={runAnalysis} loading={entriesLoading} userBio={userBio} />;
       case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={() => runAnalysis(entries)} />;
       case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} />;
       case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} />;
       case "todos": return <TodoPage dark={dark} />;
-      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} />;
+      case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={setUserBio} />;
       default: return <HomePage dark={dark} setPage={setPage} />;
     }
   };
