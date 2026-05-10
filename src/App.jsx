@@ -199,7 +199,7 @@ async function callGemini(prompt, systemContext = "") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: fullPrompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 1024, topP: 0.9 },
+      generationConfig: { temperature: 0.8, maxOutputTokens: 2048, topP: 0.9 },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -251,7 +251,7 @@ ${systemPrompt}
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents,
-      generationConfig: { temperature: 0.85, maxOutputTokens: 512, topP: 0.92 },
+      generationConfig: { temperature: 0.85, maxOutputTokens: 2048, topP: 0.92 },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
