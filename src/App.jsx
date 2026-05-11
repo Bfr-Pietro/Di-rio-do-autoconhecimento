@@ -233,7 +233,7 @@ async function callGemini(prompt, systemContext = "") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: fullPrompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 2048, topP: 0.9 },
+      generationConfig: { temperature: 0.8, maxOutputTokens: 8192, topP: 0.9 },
       safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -314,8 +314,25 @@ ${systemPrompt}
 async function analyzeEntries(entries, conversations = [], bio = "") {
   if (!entries.length && !bio) return null;
   const raw = await callGemini(ANALYSIS_PROMPT(entries, conversations, bio));
-  const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  return JSON.parse(clean);
+
+  // Remove thinking tokens (gemini-2.5-flash retorna <thinking>...</thinking> antes do JSON)
+  let clean = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+  // Remove markdown code fences
+  clean = clean.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+  // Extrai o primeiro bloco JSON válido caso haja texto extra
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error("Nenhum JSON encontrado na resposta:", raw.slice(0, 300));
+    return null;
+  }
+
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.error("Erro ao fazer parse do JSON:", e, jsonMatch[0].slice(0, 300));
+    return null;
+  }
 }
 
 // ─── DEFAULT DATA ─────────────────────────────────────────────────────────────
@@ -1903,19 +1920,21 @@ function AppInner() {
     analyzingRef.current = true;
     setAnalyzing(true);
     try {
-      // Busca todas as conversas para enriquecer a análise
       let conversations = [];
       if (user) {
         try { conversations = await FirebaseService.getAllConversations(user.uid); } catch {}
       }
       const result = await analyzeEntries(entriesToAnalyze || [], conversations, effectiveBio);
+      console.log("Analysis result:", result);
       if (result) {
-        if (result.patterns?.length) setAiPatterns(result.patterns);
-        if (result.feelings?.length) setAiFeelings(result.feelings);
-        if (result.nodes?.length) setAiNodes(result.nodes);
-        if (result.edges?.length) setAiEdges(result.edges);
-        if (result.summary) setAiSummary(result.summary);
+        setAiPatterns(result.patterns?.length ? result.patterns : null);
+        setAiFeelings(result.feelings?.length ? result.feelings : null);
+        setAiNodes(result.nodes?.length ? result.nodes : null);
+        setAiEdges(result.edges?.length ? result.edges : null);
+        setAiSummary(result.summary || null);
         if (user) await FirebaseService.saveAnalysis(user.uid, result).catch(console.error);
+      } else {
+        console.warn("runAnalysis: resultado nulo ou inválido");
       }
     } catch (err) {
       console.error("Analysis error:", err);
