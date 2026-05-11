@@ -233,7 +233,7 @@ Retorne exatamente este JSON (sem nenhum texto antes ou depois):
     { "word": "emoção em português", "freq": number_1_to_15 }
   ],
   "nodes": [
-    { "id": "string_sem_espacos", "label": "string curto", "x": number_0_to_100, "y": number_0_to_100 }
+    { "id": "string_sem_espacos", "label": "string curto (máx 3 palavras)", "category": "gatilho|emocao|impacto|pensamento" }
   ],
   "edges": [
     ["id_origem", "id_destino"]
@@ -244,8 +244,8 @@ Retorne exatamente este JSON (sem nenhum texto antes ou depois):
 REGRAS OBRIGATÓRIAS:
 - patterns: 3 a 6 padrões emocionais/comportamentais REAIS percebidos em TODO o contexto
 - feelings: 6 a 14 emoções REAIS detectadas (ex: "tristeza", "ansiedade", "gratidão") com frequência estimada 1-15
-- nodes: 5 a 9 nós representando emoções ou temas centrais presentes
-- edges: conexões causais entre os nós — mínimo 3 conexões
+- nodes: 5 a 9 nós com labels curtos (máx 3 palavras). Category: "gatilho" = situações externas que causam algo; "emocao" = sentimentos e emoções; "pensamento" = crenças e pensamentos recorrentes; "impacto" = consequências e comportamentos resultantes. Organize os edges de forma que gatilhos levem a emoções, emoções a pensamentos, pensamentos a impactos — revelando a cadeia causal
+- edges: conexões causais entre os nós — mínimo 4 conexões, mostrando como uma coisa leva à outra
 - Base TUDO no que foi escrito — nunca invente emoções ausentes
 - Linguagem observacional, nunca diagnóstica
 - O JSON deve ser 100% válido e parseável`;
@@ -1474,11 +1474,97 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh, lastUpdated
   const [hoveredNode, setHoveredNode] = useState(null);
   const displayNodes = nodes?.length ? nodes : [];
   const displayEdges = edges?.length ? edges : [];
-  const nodeMap = Object.fromEntries(displayNodes.map((n) => [n.id, n]));
   const updatedLabel = formatLastUpdated(lastUpdated);
+
+  // Layout by category first, then topological sort as fallback
+  const computeLayout = (rawNodes, rawEdges) => {
+    if (!rawNodes.length) return { positioned: {}, layers: [], totalHeight: 200 };
+    const W = 560;
+    const vertGap = 90;
+    const horizGap = 150;
+
+    // Category order: gatilho → emocao → pensamento → impacto
+    const catOrder = { gatilho: 0, emocao: 1, pensamento: 2, impacto: 3 };
+    const hasCats = rawNodes.some(n => n.category && catOrder[n.category] !== undefined);
+
+    let layers = [];
+    if (hasCats) {
+      const byLayer = {};
+      rawNodes.forEach(n => {
+        const li = catOrder[n.category] ?? 1;
+        if (!byLayer[li]) byLayer[li] = [];
+        byLayer[li].push(n.id);
+      });
+      const sortedKeys = Object.keys(byLayer).map(Number).sort((a,b) => a-b);
+      layers = sortedKeys.map(k => byLayer[k]);
+    } else {
+      // Kahn topological sort
+      const ids = rawNodes.map(n => n.id);
+      const inDegree = Object.fromEntries(ids.map(id => [id, 0]));
+      const adjOut = Object.fromEntries(ids.map(id => [id, []]));
+      rawEdges.forEach(([a, b]) => {
+        if (inDegree[b] !== undefined) inDegree[b]++;
+        if (adjOut[a]) adjOut[a].push(b);
+      });
+      let queue = ids.filter(id => inDegree[id] === 0);
+      const visited = new Set();
+      while (queue.length) {
+        layers.push([...queue]);
+        queue.forEach(id => visited.add(id));
+        const next = [];
+        queue.forEach(id => {
+          (adjOut[id] || []).forEach(nb => {
+            inDegree[nb]--;
+            if (inDegree[nb] === 0 && !visited.has(nb)) next.push(nb);
+          });
+        });
+        queue = next;
+      }
+      const missed = ids.filter(id => !visited.has(id));
+      if (missed.length) layers.push(missed);
+    }
+
+    const positioned = {};
+    layers.forEach((layer, li) => {
+      const totalW = (layer.length - 1) * horizGap;
+      layer.forEach((id, ci) => {
+        positioned[id] = {
+          x: W / 2 - totalW / 2 + ci * horizGap,
+          y: 50 + li * vertGap,
+        };
+      });
+    });
+    return { positioned, layers, totalHeight: 50 + layers.length * vertGap };
+  };
+
+  const nodeMap = Object.fromEntries(displayNodes.map(n => [n.id, n]));
+  const { positioned = {}, totalHeight = 200 } = displayNodes.length
+    ? computeLayout(displayNodes, displayEdges)
+    : {};
+
+  const W = 560;
+  const svgH = Math.max(totalHeight + 40, 240);
+
+  // Color by category for semantic meaning
+  const catColors = {
+    gatilho:     dark ? "#f87171" : "#dc2626",  // red   – triggers/events
+    emocao:      dark ? "#818cf8" : "#6366f1",  // indigo – emotions
+    pensamento:  dark ? "#60a5fa" : "#2563eb",  // blue  – thoughts/beliefs
+    impacto:     dark ? "#34d399" : "#059669",  // green – consequences
+  };
+  const fallbackPalette = dark
+    ? ["#a78bfa","#fbbf24","#f472b6","#a3e635"]
+    : ["#7c3aed","#d97706","#db2777","#65a30d"];
+  const nodeColorMap = Object.fromEntries(
+    displayNodes.map((n, i) => [
+      n.id,
+      catColors[n.category] || fallbackPalette[i % fallbackPalette.length]
+    ])
+  );
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 24px" }}>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2 style={{ fontFamily: "Georgia, serif", fontSize: 26, fontWeight: 400, color: dark ? "#e8e4df" : "#1a1714", margin: 0 }}>Linha de pensamento</h2>
@@ -1510,41 +1596,161 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh, lastUpdated
           Nenhuma conexão identificada ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       ) : (
-        <div style={{ opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s" }}>
-          <div style={{ background: dark ? "rgba(255,255,255,0.01)" : "#fff", borderRadius: 20, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, padding: "40px 24px", marginTop: 24, position: "relative", overflow: "hidden" }}>
-            <svg viewBox="0 0 100 100" style={{ width: "100%", height: "auto" }}>
+        <div style={{ opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s", marginTop: 24 }}>
+          {/* SVG graph */}
+          <div style={{
+            background: dark ? "rgba(255,255,255,0.015)" : "#fafafa",
+            borderRadius: 20,
+            border: `1px solid ${dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)"}`,
+            padding: "24px 16px",
+            overflowX: "auto",
+          }}>
+            {/* Category legend row */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+              {[
+                { cat: "gatilho", label: "Gatilho", color: dark ? "#f87171" : "#dc2626" },
+                { cat: "emocao", label: "Emoção", color: dark ? "#818cf8" : "#6366f1" },
+                { cat: "pensamento", label: "Pensamento", color: dark ? "#60a5fa" : "#2563eb" },
+                { cat: "impacto", label: "Impacto", color: dark ? "#34d399" : "#059669" },
+              ].filter(({ cat }) => displayNodes.some(n => n.category === cat)).map(({ cat, label, color }) => (
+                <div key={cat} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, opacity: 0.8 }} />
+                  <span style={{ color: dark ? "#6b7280" : "#9ca3af", fontFamily: "Georgia, serif", fontStyle: "italic" }}>{label}</span>
+                </div>
+              ))}
+            </div>
+            <svg
+              viewBox={`0 0 ${W} ${svgH}`}
+              style={{ width: "100%", minWidth: 320, height: "auto", display: "block" }}
+            >
               <defs>
-                <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill={dark ? "#4b5563" : "#d1d5db"} />
-                </marker>
+                {displayNodes.map((n, i) => (
+                  <marker key={n.id}
+                    id={`arrow-${n.id}`}
+                    markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"
+                  >
+                    <path d="M0,0 L7,3 L0,6 Z" fill={nodeColorMap[n.id]} opacity="0.6" />
+                  </marker>
+                ))}
               </defs>
+
+              {/* Edges */}
+              {displayEdges.map(([a, b], i) => {
+                const pa = positioned[a], pb = positioned[b];
+                if (!pa || !pb) return null;
+                const color = nodeColorMap[a] || (dark ? "#4b5563" : "#d1d5db");
+                // Offset y to start below node center and end above
+                const r = 22;
+                const dx = pb.x - pa.x, dy = pb.y - pa.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const sx = pa.x + (dx / dist) * r;
+                const sy = pa.y + (dy / dist) * r;
+                const ex = pb.x - (dx / dist) * (r + 4);
+                const ey = pb.y - (dy / dist) * (r + 4);
+                // Slight curve
+                const mx = (sx + ex) / 2 - dy * 0.12;
+                const my = (sy + ey) / 2 + dx * 0.12;
+                return (
+                  <path key={i}
+                    d={`M${sx},${sy} Q${mx},${my} ${ex},${ey}`}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="1.5"
+                    strokeOpacity="0.4"
+                    markerEnd={`url(#arrow-${a})`}
+                  />
+                );
+              })}
+
+              {/* Nodes */}
+              {displayNodes.map((n) => {
+                const pos = positioned[n.id];
+                if (!pos) return null;
+                const color = nodeColorMap[n.id];
+                const isHovered = hoveredNode === n.id;
+                const r = 22;
+                const label = n.label || n.id;
+                // Split label into lines of max ~14 chars
+                const words = label.split(" ");
+                const lines = [];
+                let cur = "";
+                words.forEach(w => {
+                  if ((cur + " " + w).trim().length > 14 && cur) { lines.push(cur); cur = w; }
+                  else cur = (cur + " " + w).trim();
+                });
+                if (cur) lines.push(cur);
+
+                return (
+                  <g key={n.id}
+                    onMouseEnter={() => setHoveredNode(n.id)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {/* Glow ring on hover */}
+                    {isHovered && (
+                      <circle cx={pos.x} cy={pos.y} r={r + 6}
+                        fill="none" stroke={color} strokeWidth="1.5" opacity="0.2" />
+                    )}
+                    {/* Background circle */}
+                    <circle cx={pos.x} cy={pos.y} r={r}
+                      fill={isHovered ? color : (dark ? "#1c1f2e" : "#fff")}
+                      stroke={color}
+                      strokeWidth={isHovered ? 0 : 1.5}
+                      opacity={isHovered ? 0.95 : 1}
+                      style={{ transition: "all 0.2s" }}
+                    />
+                    {/* Label lines */}
+                    {lines.map((line, li) => (
+                      <text key={li}
+                        x={pos.x}
+                        y={pos.y + (li - (lines.length - 1) / 2) * 13 + 1}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fontFamily="Georgia, serif"
+                        fill={isHovered ? "#fff" : (dark ? color : color)}
+                        opacity={isHovered ? 1 : 0.9}
+                        style={{ transition: "all 0.2s", userSelect: "none" }}
+                      >
+                        {line}
+                      </text>
+                    ))}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          {/* Legend: connections list */}
+          {displayEdges.length > 0 && (
+            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", marginBottom: 4 }}>
+                Como se conectam:
+              </div>
               {displayEdges.map(([a, b], i) => {
                 const na = nodeMap[a], nb = nodeMap[b];
                 if (!na || !nb) return null;
                 return (
-                  <line key={i} x1={na.x} y1={na.y + 2.5} x2={nb.x} y2={nb.y - 2.5}
-                    stroke={dark ? "#374151" : "#e5e7eb"} strokeWidth="0.5" markerEnd="url(#arrowhead)" />
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <span style={{
+                      padding: "3px 10px", borderRadius: 100, fontSize: 12, fontWeight: 500,
+                      background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                      color: nodeColorMap[a] || (dark ? "#9ca3af" : "#6b7280"),
+                      border: `1px solid ${nodeColorMap[a]}30`,
+                      whiteSpace: "nowrap",
+                    }}>{na.label}</span>
+                    <span style={{ color: dark ? "#374151" : "#d1d5db", fontSize: 16 }}>→</span>
+                    <span style={{
+                      padding: "3px 10px", borderRadius: 100, fontSize: 12, fontWeight: 500,
+                      background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                      color: nodeColorMap[b] || (dark ? "#9ca3af" : "#6b7280"),
+                      border: `1px solid ${nodeColorMap[b]}30`,
+                      whiteSpace: "nowrap",
+                    }}>{nb.label}</span>
+                  </div>
                 );
               })}
-              {displayNodes.map((n) => (
-                <g key={n.id} onMouseEnter={() => setHoveredNode(n.id)} onMouseLeave={() => setHoveredNode(null)} style={{ cursor: "pointer" }}>
-                  <circle cx={n.x} cy={n.y} r="3.5"
-                    fill={hoveredNode === n.id ? "#6366f1" : (dark ? "#1f2937" : "#f3f4f6")}
-                    stroke={hoveredNode === n.id ? "#818cf8" : (dark ? "#374151" : "#d1d5db")}
-                    strokeWidth="0.7" style={{ transition: "all 0.2s" }}
-                  />
-                  <text x={n.x + 5} y={n.y + 1} fontSize="3.2"
-                    fill={hoveredNode === n.id ? (dark ? "#a5b4fc" : "#6366f1") : (dark ? "#9ca3af" : "#6b7280")}
-                    style={{ fontFamily: "Georgia, serif", transition: "fill 0.2s" }}>
-                    {n.label}
-                  </text>
-                </g>
-              ))}
-            </svg>
-          </div>
-          <div style={{ marginTop: 24, fontSize: 13, color: dark ? "#4b5563" : "#c4b8ae", textAlign: "center", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
-            Passe o cursor sobre os nós para explorar.
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
