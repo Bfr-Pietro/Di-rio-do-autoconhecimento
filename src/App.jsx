@@ -1376,8 +1376,19 @@ function DiaryPage({ dark, entries, setEntries, loading, userBio = "" }) {
 }
 
 // ─── PATTERNS PAGE ────────────────────────────────────────────────────────────
-function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
+function formatLastUpdated(date) {
+  if (!date) return null;
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return "agora mesmo";
+  if (diff < 3600) return `há ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `há ${Math.floor(diff / 3600)}h`;
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function PatternsPage({ dark, patterns, analyzing, onRefresh, lastUpdated }) {
   const list = patterns?.length ? patterns : [];
+  const updatedLabel = formatLastUpdated(lastUpdated);
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 24px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 12 }}>
@@ -1396,6 +1407,12 @@ function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
         </div>
       </div>
 
+      {updatedLabel && (
+        <div style={{ fontSize: 12, color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", marginBottom: 8 }}>
+          Última atualização: {updatedLabel}
+        </div>
+      )}
+
       {analyzing && (
         <div style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 24, background: dark ? "rgba(251,191,36,0.05)" : "rgba(251,191,36,0.04)", border: `1px solid ${dark ? "rgba(251,191,36,0.1)" : "rgba(251,191,36,0.1)"}`, fontSize: 13, color: dark ? "#d97706" : "#92400e", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
           A IA está analisando suas entradas...
@@ -1408,7 +1425,7 @@ function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 24 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 24, opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s" }}>
         {list.map((p, i) => (
           <div key={i} style={{ padding: "24px 28px", background: dark ? "rgba(255,255,255,0.02)" : "#fff", borderRadius: 16, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, animation: `slideUp 0.4s ease ${i * 0.07}s both` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -1429,11 +1446,12 @@ function PatternsPage({ dark, patterns, analyzing, onRefresh }) {
 }
 
 // ─── THOUGHT LINE PAGE ────────────────────────────────────────────────────────
-function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh }) {
+function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh, lastUpdated }) {
   const [hoveredNode, setHoveredNode] = useState(null);
   const displayNodes = nodes?.length ? nodes : [];
   const displayEdges = edges?.length ? edges : [];
   const nodeMap = Object.fromEntries(displayNodes.map((n) => [n.id, n]));
+  const updatedLabel = formatLastUpdated(lastUpdated);
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 24px" }}>
@@ -1451,12 +1469,24 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh }) {
         </div>
       </div>
 
+      {updatedLabel && (
+        <div style={{ fontSize: 12, color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", marginBottom: 8 }}>
+          Última atualização: {updatedLabel}
+        </div>
+      )}
+
+      {analyzing && (
+        <div style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 16, background: dark ? "rgba(251,191,36,0.05)" : "rgba(251,191,36,0.04)", border: `1px solid ${dark ? "rgba(251,191,36,0.1)" : "rgba(251,191,36,0.1)"}`, fontSize: 13, color: dark ? "#d97706" : "#92400e", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
+          A IA está analisando suas entradas...
+        </div>
+      )}
+
       {!analyzing && displayNodes.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 24px", color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: 15, lineHeight: 1.8, marginTop: 16 }}>
           Nenhuma conexão identificada ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       ) : (
-        <>
+        <div style={{ opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s" }}>
           <div style={{ background: dark ? "rgba(255,255,255,0.01)" : "#fff", borderRadius: 20, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, padding: "40px 24px", marginTop: 24, position: "relative", overflow: "hidden" }}>
             <svg viewBox="0 0 100 100" style={{ width: "100%", height: "auto" }}>
               <defs>
@@ -1491,20 +1521,21 @@ function ThoughtLinePage({ dark, nodes, edges, analyzing, onRefresh }) {
           <div style={{ marginTop: 24, fontSize: 13, color: dark ? "#4b5563" : "#c4b8ae", textAlign: "center", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
             Passe o cursor sobre os nós para explorar.
           </div>
-        </>
+        </div>
       )}
     </div>
   );
 }
 
 // ─── FEELINGS PAGE ────────────────────────────────────────────────────────────
-function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh }) {
+function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh, lastUpdated }) {
   const [period, setPeriod] = useState("tudo");
   const displayFeelings = feelings?.length ? feelings : [];
   const max = displayFeelings.length ? Math.max(...displayFeelings.map((f) => f.freq)) : 1;
   const colors = dark
     ? ["#818cf8","#a78bfa","#c4b5fd","#6366f1","#7c3aed","#8b5cf6","#a5b4fc"]
     : ["#6366f1","#7c3aed","#8b5cf6","#a78bfa","#c084fc","#818cf8","#4f46e5"];
+  const updatedLabel = formatLastUpdated(lastUpdated);
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 24px" }}>
@@ -1522,8 +1553,20 @@ function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh }) {
         </div>
       </div>
 
+      {updatedLabel && (
+        <div style={{ fontSize: 12, color: dark ? "#4b5563" : "#c4b8ae", fontFamily: "Georgia, serif", fontStyle: "italic", marginBottom: 8 }}>
+          Última atualização: {updatedLabel}
+        </div>
+      )}
+
+      {analyzing && (
+        <div style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 8, background: dark ? "rgba(251,191,36,0.05)" : "rgba(251,191,36,0.04)", border: `1px solid ${dark ? "rgba(251,191,36,0.1)" : "rgba(251,191,36,0.1)"}`, fontSize: 13, color: dark ? "#d97706" : "#92400e", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
+          A IA está analisando suas entradas...
+        </div>
+      )}
+
       {summary && (
-        <div style={{ padding: "16px 20px", borderRadius: 12, margin: "16px 0", background: dark ? "rgba(99,102,241,0.05)" : "rgba(99,102,241,0.04)", border: `1px solid ${dark ? "rgba(99,102,241,0.1)" : "rgba(99,102,241,0.08)"}`, fontSize: 14, lineHeight: 1.7, color: dark ? "#9ca3af" : "#6b6460", fontFamily: "Georgia, serif", fontStyle: "italic" }}>
+        <div style={{ padding: "16px 20px", borderRadius: 12, margin: "16px 0", background: dark ? "rgba(99,102,241,0.05)" : "rgba(99,102,241,0.04)", border: `1px solid ${dark ? "rgba(99,102,241,0.1)" : "rgba(99,102,241,0.08)"}`, fontSize: 14, lineHeight: 1.7, color: dark ? "#9ca3af" : "#6b6460", fontFamily: "Georgia, serif", fontStyle: "italic", opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s" }}>
           {summary}
         </div>
       )}
@@ -1533,7 +1576,7 @@ function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh }) {
           Nenhum sentimento identificado ainda.<br />Escreva no diário ou em "Quem sou eu" e clique em <Icon name="refresh" size={13} /> para analisar.
         </div>
       ) : (
-        <>
+        <div style={{ opacity: analyzing ? 0.5 : 1, transition: "opacity 0.3s" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "center", padding: "48px 32px", background: dark ? "rgba(255,255,255,0.01)" : "#fff", borderRadius: 20, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, minHeight: 300, marginTop: 16 }}>
             {displayFeelings.map((f, i) => {
               const size = 12 + (f.freq / max) * 20;
@@ -1561,7 +1604,7 @@ function FeelingsPage({ dark, feelings, analyzing, summary, onRefresh }) {
               }}>{p}</button>
             ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -1882,6 +1925,7 @@ function AppInner() {
   const [aiNodes, setAiNodes] = useState(null);
   const [aiEdges, setAiEdges] = useState(null);
   const [aiSummary, setAiSummary] = useState(null);
+  const [aiLastUpdated, setAiLastUpdated] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [userBio, setUserBio] = useState("");
   const [bioLoading, setBioLoading] = useState(true);
@@ -1910,6 +1954,10 @@ function AppInner() {
         setAiEdges(a.edges.map(e => Array.isArray(e) ? e : [e.from, e.to]));
       }
       if (a.summary) setAiSummary(a.summary);
+      if (a.updatedAt) {
+        const ts = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(a.updatedAt);
+        setAiLastUpdated(ts);
+      }
     }
   }, []);
 
@@ -1951,6 +1999,7 @@ function AppInner() {
             edges: (result.edges || []).map(e => Array.isArray(e) ? { from: e[0], to: e[1] } : e),
           };
           await FirebaseService.saveAnalysis(user.uid, resultToSave).catch(console.error);
+          setAiLastUpdated(new Date());
         }
       } else {
         console.warn("runAnalysis: resultado nulo ou inválido");
@@ -1983,6 +2032,7 @@ function AppInner() {
       setAiNodes(null);
       setAiEdges(null);
       setAiSummary(null);
+      setAiLastUpdated(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entriesLoading, bioLoading, user]);
@@ -1999,9 +2049,9 @@ function AppInner() {
     switch (page) {
       case "home": return <HomePage dark={dark} setPage={setPage} />;
       case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} loading={entriesLoading} userBio={userBio} />;
-      case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={handleRefresh} />;
-      case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} onRefresh={handleRefresh} />;
-      case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} onRefresh={handleRefresh} />;
+      case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
+      case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
+      case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
       case "todos": return <TodoPage dark={dark} />;
       case "settings": return <SettingsPage dark={dark} toggleDark={toggle} userBio={userBio} setUserBio={setUserBio} />;
       default: return <HomePage dark={dark} setPage={setPage} />;
