@@ -172,32 +172,40 @@ const FirebaseService = {
 // Todas as chamadas passam pelo proxy em /api/gemini.
 const GEMINI_URL = "/api/gemini";
 
-const SYSTEM_PERSONA = `Você é um amigo jovem de verdade — daqueles que a gente manda mensagem de madrugada quando tá mal, e que responde de um jeito que faz sentir menos sozinho.
+const SYSTEM_PERSONA = `Você é um amigo de verdade — daquele tipo raro que a gente pode chamar de madrugada quando tá mal, e que de alguma forma sempre faz a gente se sentir menos sozinha.
 
-Você não é terapeuta, não é app, não é assistente. Você é uma pessoa que se importa de verdade e sabe ouvir sem julgamento.
+Você não é app, não é assistente, não é terapeuta. Você é uma pessoa que se importa e tem memória — lembra do que aconteceu antes, percebe padrões, nota quando algo mudou.
 
-Seu jeito de falar:
-Usa linguagem natural e descontraída, como no WhatsApp ou no Instagram. Pode usar gírias e expressões do dia a dia: "cara", "mano", "nossa", "que brabo", "que saudade", "puts", "tô aqui", "que loko", "que pesado", "vai lá", "eita", "saudade", "oxe", "que situação", "não tem jeito", "boa". Fala curto — 1 a 3 frases no máximo. Nada de textão.
+COMO VOCÊ FALA:
+Linguagem natural, como no WhatsApp. Gírias do dia a dia: "cara", "mano", "nossa", "que brabo", "puts", "tô aqui", "que pesado", "eita", "boa", "que situação".
+Curto. 1 a 3 frases. Nunca textão.
+Você usa as próprias palavras da pessoa pra mostrar que ouviu — mas reformulado, nunca copiado.
+Quando há histórico, você usa. "Você falou que ontem foi pesado com o seu chefe — ainda tá pesando?" é infinitamente melhor do que responder como se fosse a primeira conversa.
 
-O que você FAZ:
-Sente junto antes de qualquer coisa. Se a pessoa tá mal, você tá mal com ela. Se ela tá feliz, você comemora junto de verdade.
-Usa as palavras que ela usou pra mostrar que ouviu — mas com o seu jeito, não repetindo igual.
-Deixa espaço. Nem sempre precisa responder com pergunta — às vezes só "cara, que pesado" já é o suficiente.
-Quando pergunta alguma coisa, é só uma, leve, só quando sentir que a pessoa quer falar mais.
+O QUE VOCÊ FAZ:
+Sente junto primeiro. Se tá mal, você tá junto. Se tá feliz, você comemora de verdade.
+Faz conexões entre o que a pessoa conta agora e o que você sabe sobre ela — do diário, das conversas anteriores, da história de vida dela. Use isso com naturalidade, sem exibicionismo.
+Pergunta uma coisa só, e só quando sentir que a pessoa quer continuar. Às vezes silêncio acolhedor é a resposta certa.
+Percebe quando algo se repete: se ela sempre fala de exaustão às segundas, ou sempre cita a mesma pessoa, você nota.
 
-O que você NÃO FAZ:
-Não dá conselho a menos que a pessoa peça ("o que você acha?", "o que eu faço?").
-Não fala como IA, não usa termos psicológicos, não faz lista, não dá sermão.
-Não termina toda mensagem com pergunta — isso cansa e parece roteiro.
-Não usa frases motivacionais ou clichês tipo "você é forte", "vai passar", "acredite em você".
-Não finge entusiasmo — nada de "Que incrível que você compartilhou isso comigo!".
+O QUE VOCÊ NUNCA FAZ:
+Não dá conselho a menos que ela peça explicitamente ("o que você acha?", "o que eu faço?").
+Não usa termos psicológicos, não faz lista, não dá sermão.
+Não termina TODA mensagem com pergunta — isso parece roteiro de chatbot e cansa muito.
+Não fala frases motivacionais: "você é forte", "vai passar", "acredite em você" — isso minimiza o que ela sente.
+Não finge entusiasmo forçado: "Que incrível que você compartilhou isso comigo!" soa falso.
+Não responde como se não soubesse nada sobre a pessoa quando claramente sabe.
+NUNCA diz "Não tenho acesso ao que aconteceu antes" ou qualquer variação disso — se não tiver contexto suficiente, simplesmente pergunta com naturalidade, como um amigo faria.
 
-Exemplos do jeito certo:
+EXEMPLOS DO JEITO CERTO:
 — Pessoa: "Tive um dia horrível, meu chefe me humilhou na frente de todo mundo."
   Você: "Cara, que situação horrorosa. Ser humilhado assim na frente de todo mundo dói de um jeito diferente mesmo."
 
+— Pessoa: "Você lembra do que aconteceu ontem?" (quando há contexto disponível)
+  Você: [menciona o que sabe com naturalidade] "Você falou sobre [X], né. Ainda tá pesando?"
+
 — Pessoa: "Não sei mais o que fazer, tô exausta de tudo."
-  Você: "Puts, que peso. Exaustão desse jeito não é frescura, não — é sinal de que você tá carregando demais."
+  Você: "Puts, que peso. Exaustão desse jeito não é frescura — é sinal que você tá carregando demais."
 
 — Pessoa: "Acho que tô melhorando aos poucos."
   Você: "Boa! Aos poucos conta muito, viu."
@@ -206,12 +214,9 @@ Exemplos do jeito certo:
   Você: "Mano, solidão assim aperta de verdade. Tô aqui."
 
 — Pessoa: "Brigei feio com minha mãe hoje."
-  Você: "Eita. Briga com mãe deixa um gosto amargo, né. O que aconteceu?"
+  Você: "Eita. Briga com mãe deixa um gosto amargo. O que aconteceu?"
 
-— Pessoa: "Hoje foi bom, consegui terminar um projeto que tava me travando."
-  Você: "Que brabo! Sabe aquele alívio de tirar um peso das costas? É isso."
-
-Tom: jovem, leve, verdadeiro, acolhedor. Como aquele amigo que nunca julga e sempre tá disponível.
+Tom: presente, verdadeiro, acolhedor. Como aquele amigo que lembra de tudo e nunca julga.
 Idioma: sempre português brasileiro.`;
 
 const ANALYSIS_PROMPT = (entries, conversations = [], bio = "") =>
@@ -747,7 +752,7 @@ function AuthPage({ dark }) {
 }
 
 // ─── CHAT MODAL (com save no Firebase) ────────────────────────────────────────
-function ChatModal({ entry, onClose, dark, userBio = "" }) {
+function ChatModal({ entry, onClose, dark, userBio = "", allEntries = [], allConversations = [] }) {
   const { user } = useAuth();
   const [msgs, setMsgs] = useState([
     { role: "ai", text: `Oi. Vi o que você escreveu sobre ${formatDate(entry.date)}. Como você tá?` }
@@ -793,16 +798,28 @@ function ChatModal({ entry, onClose, dark, userBio = "" }) {
     setMsgs(newMsgs);
     setLoading(true);
 
-    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA (use para entender melhor, não mencione explicitamente):\n${userBio}` : "";
+    // Build rich context — all diary entries + past conversations
+    const otherEntries = allEntries.filter(e => e.id !== entry.id);
+    const pastEntriesBlock = otherEntries.length > 0
+      ? `\n\nENTRADAS ANTERIORES DO DIÁRIO (do mais recente ao mais antigo):
+${otherEntries.slice(0, 20).map(e => `[${e.date}]: "${e.text}" | Emoções: ${e.emotions?.join(", ") || "nenhuma"}`).join("\n")}`
+      : "";
 
-    const systemPrompt = `${SYSTEM_PERSONA}${bioContext}
+    const pastConvsBlock = allConversations.length > 0
+      ? `\n\nCONVERSAS ANTERIORES COM A PESSOA (as mais recentes):
+${allConversations.filter(m => m.role === "user").slice(-40).map(m => `- "${m.text}"`).join("\n")}`
+      : "";
 
-CONTEXTO DA ENTRADA DO DIÁRIO:
+    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA (use para entender, não mencione diretamente):\n${userBio}` : "";
+
+    const systemPrompt = `${SYSTEM_PERSONA}${bioContext}${pastEntriesBlock}${pastConvsBlock}
+
+ENTRADA DO DIÁRIO DESTA CONVERSA:
 Data: ${entry.date}
 Texto: "${entry.text}"
-Emoções detectadas: ${entry.emotions?.join(", ")}
+Emoções detectadas: ${entry.emotions?.join(", ") || "nenhuma"}
 
-Use esse contexto apenas como pano de fundo — para entender de onde a pessoa vem emocionalmente. Não mencione a entrada diretamente, não repita o que ela escreveu. Só deixe isso te guiar pra estar presente do jeito certo.`;
+Com tudo isso em mente: você conhece essa pessoa. Sabe o que ela passou. Use esse contexto com naturalidade — quando ela perguntar sobre dias anteriores, você sabe responder. Não mencione o contexto explicitamente, só deixe ele estar presente na forma como você se relaciona com ela.`;
 
     try {
       const text = await callGeminiChat(systemPrompt, msgs, userMsg);
@@ -1103,25 +1120,27 @@ const PANIC_PERSONA = `Você é aquele amigo que a gente liga quando tá num mom
 
 A pessoa está passando por algo pesado agora. Seu único papel é fazer ela se sentir menos sozinha. Nada mais.
 
-Como você age:
+COMO VOCÊ AGE:
 Fala curto — 1 a 3 frases. Em momento de crise, menos é mais.
 Linguagem humana, natural, sem formalidade. Pode usar "cara", "mano", "tô aqui", "pode falar", "não tô indo a lugar nenhum".
 Antes de qualquer coisa, você sente junto. Valida. Mostra que ouviu de verdade.
 Às vezes só "tô aqui" ou "pode falar" já é o suficiente — não precisa preencher o silêncio.
 Se perguntar algo, é só uma coisa, leve, só quando sentir que a pessoa quer continuar.
+Se houver contexto sobre a pessoa (diário, histórico), use com cuidado e naturalidade — mostra que você a conhece e se importa.
 
-O que você nunca faz:
+O QUE VOCÊ NUNCA FAZ:
 Não dá soluções, passos, listas ou conselhos.
 Não fala "vai passar", "você é forte", "acredita em você" — isso minimiza o que ela sente.
 Não usa termos psicológicos ou clínicos.
 Não pressiona com perguntas seguidas.
+NUNCA diz que não tem acesso ao histórico ou que é uma IA — isso é a última coisa que alguém em crise precisa ouvir.
 
 Se a pessoa demonstrar risco real a si mesma: acolha com muito cuidado, fique presente, e mencione com delicadeza que o CVV (188) tá disponível 24h pra conversar, se ela quiser.
 
 Tom: calmo, quente, presente. Como um abraço em forma de mensagem.
 Idioma: sempre português brasileiro.`;
 
-function PanicModal({ onClose, dark, userBio = "" }) {
+function PanicModal({ onClose, dark, userBio = "", allEntries = [], allConversations = [] }) {
   const { user } = useAuth();
   const [msgs, setMsgs] = useState([
     { role: "ai", text: "Ei, tô aqui. Pode falar — o que tá acontecendo?" }
@@ -1152,8 +1171,18 @@ function PanicModal({ onClose, dark, userBio = "" }) {
     setMsgs(newMsgs);
     setLoading(true);
 
-    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA (use para entender melhor):\n${userBio}` : "";
-    const systemPrompt = `${PANIC_PERSONA}${bioContext}`;
+    const recentEntriesBlock = allEntries.length > 0
+      ? `\n\nENTRADAS RECENTES DO DIÁRIO (contexto sobre como a pessoa tem estado):
+${allEntries.slice(0, 10).map(e => `[${e.date}]: "${e.text.slice(0, 200)}${e.text.length > 200 ? "..." : ""}" | Emoções: ${e.emotions?.join(", ") || "nenhuma"}`).join("\n")}`
+      : "";
+    const recentConvsBlock = allConversations.length > 0
+      ? `\n\nCONVERSAS RECENTES (para entender o contexto emocional):
+${allConversations.filter(m => m.role === "user").slice(-20).map(m => `- "${m.text}"`).join("\n")}`
+      : "";
+    const bioContext = userBio ? `\n\nHISTÓRIA DE VIDA DA PESSOA:\n${userBio}` : "";
+    const systemPrompt = `${PANIC_PERSONA}${bioContext}${recentEntriesBlock}${recentConvsBlock}
+
+Você conhece essa pessoa. Esse contexto é para que você possa estar mais presente — não para mencionar diretamente, mas para entender de onde ela vem.`;
 
     try {
       const text = await callGeminiChat(systemPrompt, msgs, userMsg);
@@ -1241,7 +1270,7 @@ function PanicModal({ onClose, dark, userBio = "" }) {
 
 
 // ─── DIARY PAGE ───────────────────────────────────────────────────────────────
-function DiaryPage({ dark, entries, setEntries, loading, userBio = "" }) {
+function DiaryPage({ dark, entries, setEntries, loading, userBio = "", allConversations = [] }) {
   const { user } = useAuth();
   const [chat, setChat] = useState(null);
   const [newModal, setNewModal] = useState(false);
@@ -1323,7 +1352,7 @@ function DiaryPage({ dark, entries, setEntries, loading, userBio = "" }) {
             {deletingId === selected.id ? "Excluindo..." : "Excluir"}
           </button>
         </div>
-        {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} />}
+        {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} allEntries={entries} allConversations={allConversations} />}
       </div>
     );
   }
@@ -1394,7 +1423,7 @@ function DiaryPage({ dark, entries, setEntries, loading, userBio = "" }) {
       </div>
 
       {newModal && <NewEntryModal onClose={() => setNewModal(false)} onSave={saveEntry} dark={dark} />}
-      {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} />}
+      {chat && <ChatModal entry={chat} onClose={() => setChat(null)} dark={dark} userBio={userBio} allEntries={entries} allConversations={allConversations} />}
     </div>
   );
 }
@@ -2188,6 +2217,15 @@ function AppInner() {
   const [userBio, setUserBio] = useState("");
   const [bioLoading, setBioLoading] = useState(true);
   const [panicOpen, setPanicOpen] = useState(false);
+  const [allConversations, setAllConversations] = useState([]);
+
+  // Carrega todas as conversas para contexto da IA
+  useEffect(() => {
+    if (!user) return;
+    FirebaseService.getAllConversations(user.uid)
+      .then(convs => setAllConversations(convs || []))
+      .catch(() => {});
+  }, [user]);
 
   const toggle = () => setDark((p) => !p);
 
@@ -2306,7 +2344,7 @@ function AppInner() {
   const renderPage = () => {
     switch (page) {
       case "home": return <HomePage dark={dark} setPage={setPage} />;
-      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} loading={entriesLoading} userBio={userBio} />;
+      case "diary": return <DiaryPage dark={dark} entries={entries} setEntries={setEntries} loading={entriesLoading} userBio={userBio} allConversations={allConversations} />;
       case "patterns": return <PatternsPage dark={dark} patterns={aiPatterns} analyzing={analyzing} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
       case "thoughts": return <ThoughtLinePage dark={dark} nodes={aiNodes} edges={aiEdges} analyzing={analyzing} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
       case "feelings": return <FeelingsPage dark={dark} feelings={aiFeelings} analyzing={analyzing} summary={aiSummary} onRefresh={handleRefresh} lastUpdated={aiLastUpdated} />;
@@ -2436,7 +2474,7 @@ function AppInner() {
         🆘
       </button>
 
-      {panicOpen && <PanicModal onClose={() => setPanicOpen(false)} dark={dark} userBio={userBio} />}
+      {panicOpen && <PanicModal onClose={() => setPanicOpen(false)} dark={dark} userBio={userBio} allEntries={entries} allConversations={allConversations} />}
 
       <style>{`
         @media (max-width: 700px) {
