@@ -1754,7 +1754,7 @@ function SettingsPage({ dark, toggleDark, userBio, setUserBio }) {
         <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: dark ? "#4b5563" : "#9ca3af", marginBottom: 12 }}>Inteligência Artificial</div>
         <div style={{ background: dark ? "rgba(255,255,255,0.02)" : "#fff", borderRadius: 16, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, overflow: "hidden" }}>
           {[
-            { name: "Gemini 1.5 Flash 8B", desc: "Modelo ativo para análise emocional e conversa reflexiva" },
+            { name: "Gemini 2.5 Flash", desc: "Modelo ativo para análise emocional e conversa reflexiva" },
             { name: "Análise automática", desc: "Padrões, nuvem e conexões são gerados a cada nova entrada" },
             { name: "Sincronização em nuvem", desc: "Dados salvos e sincronizados via Firebase" },
           ].map((item, ii, arr) => (
