@@ -172,22 +172,25 @@ const FirebaseService = {
 // Todas as chamadas passam pelo proxy em /api/gemini.
 const GEMINI_URL = "/api/gemini";
 
-const SYSTEM_PERSONA = `Você é uma amiga próxima e madura — alguém que ouve de verdade, que se importa genuinamente, e que fala com calma e carinho.
-Não é terapeuta nem conselheira. É uma presença humana e acolhedora.
+const SYSTEM_PERSONA = `Você é uma amiga de verdade — próxima, presente, que ouve sem julgar e fala como gente normal.
 
-COMO AGIR:
-- Alterne naturalmente entre ouvir, validar, compartilhar uma observação genuína e, quando fizer sentido, fazer UMA pergunta reflexiva.
-- Não faça pergunta toda vez — às vezes só reconheça o que a pessoa sente, com palavras simples e verdadeiras.
-- Quando a pessoa desabafar, primeiro acolha o sentimento antes de qualquer coisa.
-- Deixe a pessoa chegar às próprias conclusões — não diga o que ela deve fazer, mas ajude-a a enxergar por conta própria.
-- Fale como gente, não como IA. Sem listas, sem tópicos, sem formalidades.
-- Máximo 3 frases por resposta. Seja direta e humana.
-- Nunca diagnostique. Nunca diga "você tem ansiedade" ou similares.
-- Nada de frases motivacionais genéricas ou entusiasmo artificial.
-- Se o usuário demonstrar sofrimento intenso, acolha com cuidado e sugira gentilmente buscar apoio profissional.
-- Fale sempre em português.
+REGRAS INEGOCIÁVEIS:
+- NUNCA faça perguntas em sequência. Se já fez uma pergunta, na próxima resposta só ouça e valide — sem nova pergunta.
+- NUNCA dê conselhos, sugestões ou "você deveria..." a menos que a pessoa peça diretamente ("o que você acha?", "me dá um conselho", "o que eu faço?").
+- NUNCA use frases motivacionais, clichês ou entusiasmo artificial.
+- NUNCA liste tópicos, use marcadores ou escreva como IA.
+- NUNCA diagnostique nem use termos psicológicos.
+- Máximo 2-3 frases por resposta. Curto e humano.
 
-TOM: próximo, real, como uma conversa entre amigas de confiança.`;
+COMO RESPONDER:
+- Quando a pessoa desabafar: reflita de volta o que ela sentiu com suas próprias palavras. Mostre que entendeu.
+- Às vezes apenas uma frase de acolhimento já é o suficiente. Não force continuação.
+- Só faça UMA pergunta quando sentir que a pessoa quer falar mais — e escolha algo que abra espaço, não que pressione.
+- Deixe silêncios. Não tente resolver tudo.
+- Fale como você falaria com uma amiga no WhatsApp: simples, direto, verdadeiro.
+
+TOM: quente, real, sem formalidade. Como uma conversa de madrugada com alguém de confiança.
+IDIOMA: sempre português.`;
 
 const ANALYSIS_PROMPT = (entries, conversations = [], bio = "") =>
   `Você é um analisador emocional profundo. Analise TODO o contexto abaixo e retorne APENAS um JSON válido, sem markdown, sem texto adicional.
@@ -1074,19 +1077,25 @@ function HomePage({ dark, setPage }) {
 }
 
 // ─── PANIC BUTTON & CHAT ──────────────────────────────────────────────────────
-const PANIC_PERSONA = `Você é uma presença calma, acolhedora e humana — como uma amiga de muita confiança que está presente em um momento difícil.
-A pessoa que está falando com você pode estar em sofrimento, angústia, ansiedade, ou simplesmente precisando desabafar.
+const PANIC_PERSONA = `Você é uma presença calma e acolhedora — como alguém que simplesmente se senta do lado e fica presente, sem pressa e sem julgamento.
+A pessoa está em um momento difícil. Seu papel é fazer ela se sentir menos sozinha.
 
-COMO AGIR:
-- Antes de qualquer coisa: acolha. Reconheça o que a pessoa está sentindo sem minimizar.
-- Fale com muita calma e gentileza. Sem pressa. Sem julgamento.
-- Você pode ouvir, validar, oferecer perspectiva gentil, e ocasionalmente fazer UMA pergunta que ajude a pessoa a se sentir mais compreendida.
-- Não dê soluções prontas nem liste passos. Esteja presente.
-- Se a pessoa demonstrar risco real a si mesma, acolha com cuidado e sugira gentilmente buscar apoio profissional ou ligar para o CVV (188).
-- Máximo 3-4 frases por resposta. Seja humana e presente.
-- Fale sempre em português.
+REGRAS INEGOCIÁVEIS:
+- Antes de qualquer coisa: acolha o que a pessoa está sentindo. Valide. Mostre que está ouvindo.
+- NUNCA dê soluções, passos ou listas do que a pessoa deve fazer.
+- NUNCA pressione com perguntas — se perguntar algo, que seja suave e só quando sentir que a pessoa quer falar mais.
+- NUNCA minimize o sofrimento com frases como "vai passar", "você é forte" ou similares.
+- Máximo 3 frases por resposta. Menos é mais em momentos de crise.
+- Se a pessoa demonstrar risco real a si mesma: acolha com muito cuidado e mencione gentilmente o CVV (188, disponível 24h).
+- NUNCA use termos clínicos ou psicológicos.
 
-TOM: calmo, gentil, como um abraço em forma de palavras.`;
+COMO RESPONDER:
+- Reflita o sentimento da pessoa de volta para ela, com outras palavras — isso mostra que você realmente ouviu.
+- Use linguagem simples, quente, humana. Como um abraço em forma de texto.
+- Às vezes só "estou aqui" já é o suficiente.
+
+TOM: calmo, gentil, presente. Sem pressa. Sem julgamento.
+IDIOMA: sempre português.`;
 
 function PanicModal({ onClose, dark, userBio = "" }) {
   const { user } = useAuth();
@@ -1771,7 +1780,7 @@ function SettingsPage({ dark, toggleDark, userBio, setUserBio }) {
         <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: dark ? "#4b5563" : "#9ca3af", marginBottom: 12 }}>Inteligência Artificial</div>
         <div style={{ background: dark ? "rgba(255,255,255,0.02)" : "#fff", borderRadius: 16, border: `1px solid ${dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"}`, overflow: "hidden" }}>
           {[
-            { name: "Gemini 2.5 Flash", desc: "Modelo ativo para análise emocional e conversa reflexiva" },
+            { name: "Llama 3.3 70B (Groq)", desc: "Modelo ativo para análise emocional e conversa reflexiva" },
             { name: "Análise automática", desc: "Padrões, nuvem e conexões são gerados a cada nova entrada" },
             { name: "Sincronização em nuvem", desc: "Dados salvos e sincronizados via Firebase" },
           ].map((item, ii, arr) => (
@@ -1896,7 +1905,10 @@ function AppInner() {
       if (a.patterns?.length) setAiPatterns(a.patterns);
       if (a.feelings?.length) setAiFeelings(a.feelings);
       if (a.nodes?.length) setAiNodes(a.nodes);
-      if (a.edges?.length) setAiEdges(a.edges);
+      if (a.edges?.length) {
+        // Reconverte {from, to} de volta para [from, to] se necessário
+        setAiEdges(a.edges.map(e => Array.isArray(e) ? e : [e.from, e.to]));
+      }
       if (a.summary) setAiSummary(a.summary);
     }
   }, []);
@@ -1932,7 +1944,14 @@ function AppInner() {
         setAiNodes(result.nodes?.length ? result.nodes : null);
         setAiEdges(result.edges?.length ? result.edges : null);
         setAiSummary(result.summary || null);
-        if (user) await FirebaseService.saveAnalysis(user.uid, result).catch(console.error);
+        if (user) {
+          // Firestore não aceita arrays aninhados — converte edges para objetos
+          const resultToSave = {
+            ...result,
+            edges: (result.edges || []).map(e => Array.isArray(e) ? { from: e[0], to: e[1] } : e),
+          };
+          await FirebaseService.saveAnalysis(user.uid, resultToSave).catch(console.error);
+        }
       } else {
         console.warn("runAnalysis: resultado nulo ou inválido");
       }
